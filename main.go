@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
 var l *log.Logger
@@ -75,7 +75,7 @@ func main() {
 	}
 
 	newSession := session.New(s3Config)
-	s3Client := s3.New(newSession)
+	uploader := s3manager.NewUploader(newSession)
 
 	file, err := os.Open(target)
 	if err != nil {
@@ -83,15 +83,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	object := s3.PutObjectInput{
+	result, err := uploader.Upload(&s3manager.UploadInput{
+		ACL:    aws.String(acl),
 		Bucket: aws.String(bucket),
 		Key:    aws.String(target),
-		ACL:    aws.String(acl),
 		Body:   file,
+	})
+	if err != nil {
+		l.Println("Failed to upload file: ", err)
+		os.Exit(1)
 	}
 
-	_, err = s3Client.PutObject(&object)
-	if err != nil {
-		fmt.Println(err.Error())
-	}
+	l.Println("Uploaded: ", aws.StringValue(&result.Location))
 }
