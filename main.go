@@ -23,6 +23,7 @@ var (
 	endpoint string
 	keyid    string
 	secret   string
+	threads  int
 )
 
 const helpMessage string = `
@@ -51,6 +52,7 @@ func flagsInit() {
 	flag.StringVar(&endpoint, "endpoint", envVar("AWS_DEFAULT_ENDPOINT", "ams3.digitaloceanspaces.com"), "S3 API endpoint.")
 	flag.StringVar(&keyid, "keyid", envVar("AWS_ACCESS_KEY_ID", ""), "API key ID.")
 	flag.StringVar(&secret, "secret", envVar("AWS_SECRET_ACCESS_KEY", ""), "API secret key.")
+	flag.IntVar(&threads, "threads", 5, "Number of concurrent threads used for upload.")
 	flag.Parse()
 }
 
@@ -88,6 +90,8 @@ func main() {
 		Bucket: aws.String(bucket),
 		Key:    aws.String(target),
 		Body:   file,
+	}, func(u *s3manager.Uploader) {
+		u.Concurrency = threads
 	})
 	if err != nil {
 		l.Println("Failed to upload file: ", err)
