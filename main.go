@@ -3,17 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
+	"github.com/apsdehal/go-logger"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
-
-var l *log.Logger
 
 var (
 	target   string
@@ -24,6 +22,7 @@ var (
 	keyid    string
 	secret   string
 	threads  int
+	debug    bool
 )
 
 const helpMessage string = `
@@ -52,21 +51,33 @@ func flagsInit() {
 	flag.StringVar(&endpoint, "endpoint", envVar("AWS_DEFAULT_ENDPOINT", "ams3.digitaloceanspaces.com"), "S3 API endpoint.")
 	flag.StringVar(&keyid, "keyid", envVar("AWS_ACCESS_KEY_ID", ""), "API key ID.")
 	flag.StringVar(&secret, "secret", envVar("AWS_SECRET_ACCESS_KEY", ""), "API secret key.")
-	flag.IntVar(&threads, "threads", 5, "Number of concurrent threads used for upload.")
+	flag.IntVar(&threads, "threads", 20, "Number of concurrent threads used for upload.")
+	flag.BoolVar(&debug, "debug", false, "Show debug log messages.")
 	flag.Parse()
 }
 
-func main() {
-	l = log.New(os.Stderr, "", log.Lshortfile)
+func logInit() *logger.Logger {
+	log, err := logger.New("go-s3up", 1, os.Stderr)
+	if err != nil {
+		panic(err) // Check for error
+	}
+	if debug {
+		log.SetLogLevel(logger.DebugLevel)
+	}
+	log.SetFormat("[%{module}] %{level}: %{message}")
+	return log
+}
 
+func main() {
 	flagsInit()
+	log := logInit()
 
 	if len(keyid) == 0 {
-		l.Println("Provide -keyid flag or AWS_ACCESS_KEY_ID env var")
+		log.Warning("Provide -keyid flag or AWS_ACCESS_KEY_ID env var")
 		os.Exit(1)
 	}
 	if len(secret) == 0 {
-		l.Println("Provide -secret flag or AWS_SECRET_ACCESS_KEY env var")
+		log.Warning("Provide -secret flag or AWS_SECRET_ACCESS_KEY env var")
 		os.Exit(1)
 	}
 
@@ -76,12 +87,14 @@ func main() {
 		Region:      aws.String(region),
 	}
 
+	log.DebugF("Connecting to: %s (region: %s)", endpoint, region)
+
 	newSession := session.New(s3Config)
 	uploader := s3manager.NewUploader(newSession)
 
 	file, err := os.Open(target)
 	if err != nil {
-		l.Println("Failed to open file: ", err)
+		log.ErrorF("Failed to open file: %v", err)
 		os.Exit(1)
 	}
 
@@ -94,9 +107,10 @@ func main() {
 		u.Concurrency = threads
 	})
 	if err != nil {
-		l.Println("Failed to upload file: ", err)
+		log.ErrorF("Failed to upload file: %v", err)
 		os.Exit(1)
 	}
 
-	l.Println("Uploaded: ", aws.StringValue(&result.Location))
+	log.DebugF("ETag: %s", aws.StringValue(result.ETag))
+	log.InfoF("Uploaded: %s", aws.StringValue(&result.Location))
 }
